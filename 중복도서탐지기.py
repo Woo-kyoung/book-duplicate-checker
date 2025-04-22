@@ -1,45 +1,45 @@
-
 import streamlit as st
 import pandas as pd
+import re
 
-st.set_page_config(page_title="중복 도서 탐지기", layout="wide")
-st.title("📚 중복 도서 탐지기")
-st.markdown("엑셀 파일을 업로드하면 학생별로 중복된 도서가 있는지 자동으로 탐지합니다.")
+st.title("📚 중복 도서 탐지기 (작가명 뒤 쉼표만 분리)")
 
-uploaded_file = st.file_uploader("엑셀 파일 업로드 (예: 2-1 독서.xlsx)", type=["xlsx"])
+uploaded_file = st.file_uploader("엑셀 파일을 업로드 해주세요", type=["xlsx"])
 
-if uploaded_file:
-    try:
-        df = pd.read_excel(uploaded_file, header=None)
-        df_data = df.iloc[1:, [1, 4, 5, 6]]  # 성명, 학년, 학기, 도서목록
-        df_data.columns = ["성명", "학년", "학기", "도서목록"]
+# 도서명 분리 함수 (작가명 뒤 쉼표만 분리)
+def split_books(text):
+    if pd.isna(text):
+        return []
+    segments = re.split(r'\([^)]*\)\s*,\s*', text)
+    cleaned_books = [re.sub(r'\([^)]*\)', '', seg).strip() for seg in segments if seg.strip()]
+    return cleaned_books
 
-        df_data = df_data.fillna(method="ffill")
-        df_data["도서목록"] = df_data["도서목록"].astype(str).str.split(",")
-        df_exploded = df_data.explode("도서목록")
-        df_exploded["도서목록"] = df_exploded["도서목록"].str.strip()
+if uploaded_file is not None:
+    df = pd.read_excel(uploaded_file)
 
-        df_valid = df_exploded[df_exploded["도서목록"].str.contains(r"\(.+\)")]
-        df_valid = df_valid.sort_values(by=["학년", "성명"])
+    # 필수 컬럼이 포함되어 있는지 확인
+    required_columns = {"번호", "성명", "과목", "학년도", "학년", "학기", "독서활동상황"}
+    if not required_columns.issubset(df.columns):
+        st.error("엑셀 파일에 필수 열이 포함되어 있지 않습니다. 다음 열이 필요합니다: " + ", ".join(required_columns))
+    else:
+        # 도서명 추출
+        df['도서목록'] = df['독서활동상황'].apply(split_books)
+        exploded = df.explode('도서목록').dropna(subset=['도서목록'])
 
-        st.subheader("✅ 학생별 정리된 독서 목록")
-        st.dataframe(df_valid, use_container_width=True)
+        # 도서명별 중복 여부 판단
+        duplicated = exploded.duplicated(subset=['성명', '도서목록'], keep=False)
+        exploded['중복여부'] = duplicated.map({True: '⭕', False: '❌'})
 
-        # 중복 탐지
-        dup = (
-            df_valid.groupby(["성명", "학년", "학기", "도서목록"])
-            .size()
-            .reset_index(name="count")
+        st.success("분석 완료! 아래에서 결과를 확인하세요.")
+        st.dataframe(exploded[['번호', '성명', '도서목록', '중복여부']])
+
+        # 다운로드 기능
+        def convert_df(df):
+            return df.to_excel(index=False, engine='openpyxl')
+
+        st.download_button(
+            label="📥 결과 엑셀 다운로드",
+            data=convert_df(exploded),
+            file_name='중복도서_분석결과.xlsx',
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-        dup = dup[dup["count"] >= 2]
-
-        st.subheader("⚠️ 중복된 도서 목록")
-        if not dup.empty:
-            st.dataframe(dup, use_container_width=True)
-            csv = dup.to_csv(index=False).encode("utf-8-sig")
-            st.download_button("중복 도서 목록 다운로드", csv, file_name="중복_도서_목록.csv")
-        else:
-            st.success("중복된 도서가 없습니다! 🎉")
-
-    except Exception as e:
-        st.error(f"파일 처리 중 오류 발생: {e}")
