@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 import re
 
-st.title("📚 중복 도서 탐지기 (개선된 초기 버전)")
+st.title("📚 중복 도서 탐지기 (개선 초기 버전 + 요약 포함)")
 
 uploaded_file = st.file_uploader("엑셀 파일 업로드 (성명, 독서활동상황 열 필수)", type=["xlsx", "csv"])
 
@@ -43,12 +43,30 @@ if uploaded_file is not None:
             st.success("✅ 중복 도서 분석 완료!")
             st.dataframe(df[['성명', '도서목록', '정리된도서명', '정확중복여부']])
 
+            # ✅ 요약 출력
+            st.markdown("### 📌 중복 도서 요약")
+            dup_df = df[df['정확중복여부'] == '⭕']
+            if not dup_df.empty:
+                summary = (
+                    dup_df.groupby(['성명', '도서목록'])
+                    .size()
+                    .reset_index(name='횟수')
+                    .query('횟수 > 1')
+                )
+                if summary.empty:
+                    st.info("✔️ 중복은 있지만 모두 1회씩만 있어요.")
+                else:
+                    for _, row in summary.iterrows():
+                        st.markdown(f"- **{row['성명']}**: {row['도서목록']} (**{row['횟수']}회**)")
+            else:
+                st.info("✔️ 중복 도서 없음")
+
             # 다운로드
             csv = df.to_csv(index=False).encode('utf-8-sig')
             st.download_button(
                 label="📥 결과 다운로드 (CSV)",
                 data=csv,
-                file_name='중복도서_개선초기버전.csv',
+                file_name='중복도서_개선초기버전_요약포함.csv',
                 mime='text/csv',
             )
 
