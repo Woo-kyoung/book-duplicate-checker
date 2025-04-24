@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import re
@@ -22,6 +21,7 @@ def is_similar(a, b, threshold=0.9):
 
 # 도서 데이터 처리
 def process_book_data(df):
+    df.columns = df.columns.str.replace(r'\s+', '', regex=True)  # 열 이름 공백 제거
     df['도서목록'] = df['독서활동상황'].apply(split_books)
     exploded = df.explode('도서목록').reset_index(drop=True)
     exploded['정리된도서명'] = exploded['도서목록'].apply(normalize_title)
@@ -51,7 +51,8 @@ def process_book_data(df):
     return exploded[['성명', '도서목록', '정리된도서명', '정확중복여부', '유사중복여부', '가장유사한도서추천']]
 
 # Streamlit UI
-st.title("📚 중복 도서 탐지기 (최종 버전)")
+st.title("📚 중복 도서 탐지기 (최종 버전: 공백 허용)")
+
 uploaded_file = st.file_uploader("엑셀 또는 CSV 파일 업로드", type=["xlsx", "csv"])
 
 if uploaded_file is not None:
@@ -60,6 +61,9 @@ if uploaded_file is not None:
             df = pd.read_csv(uploaded_file)
         else:
             df = pd.read_excel(uploaded_file)
+
+        # 열 이름 공백 제거 (핵심 처리)
+        df.columns = df.columns.str.replace(r'\s+', '', regex=True)
 
         if '성명' not in df.columns or '독서활동상황' not in df.columns:
             st.error("⚠️ 필수 열(성명, 독서활동상황)이 누락되었습니다.")
